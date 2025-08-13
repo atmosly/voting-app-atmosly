@@ -1,0 +1,9 @@
+FROM busybox:latest
+
+CMD echo "=== Dummy data start ===" && \
+    echo "Name: Alice" && \
+    echo "Age: 30" && \
+    echo "Location: Wonderland" && \
+    echo "Favorite Color: Blue" && \
+    echo "=== Dummy data end ===" && \
+    sleep 300
