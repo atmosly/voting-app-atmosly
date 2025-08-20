@@ -1,9 +1,17 @@
-FROM busybox:latest
+FROM busybox:1.36.1
+ENV SLEEP_SECONDS=300 HEARTBEAT_SECONDS=5
 
-CMD echo "=== Dummy data start ===" && \
-    echo "Name: Alice" && \
-    echo "Age: 30" && \
-    echo "Location: Wonderland" && \
-    echo "Favorite Color: Blue" && \
-    echo "=== Dummy data end ===" && \
-    sleep 300
+# Prints the dummy lines, then logs a heartbeat every HEARTBEAT_SECONDS for SLEEP_SECONDS total.
+CMD ["sh","-c","\
+  echo '=== Dummy data start ==='; \
+  echo 'Name: Alice'; \
+  echo 'Age: 30'; \
+  echo 'Location: Wonderland'; \
+  echo 'Favorite Color: Blue'; \
+  echo '=== Dummy data end ==='; \
+  S=${SLEEP_SECONDS:-300}; H=${HEARTBEAT_SECONDS:-5}; i=0; \
+  while [ $i -lt $S ]; do \
+    echo \"$(date +'%Y-%m-%dT%H:%M:%S%z') still running… t=${i}s\"; \
+    sleep $H; i=$((i+H)); \
+  done \
+"]
