@@ -1,17 +1,47 @@
+# Pin the base for reproducibility
 FROM busybox:1.36.1
-ENV SLEEP_SECONDS=300 HEARTBEAT_SECONDS=5
 
-# Prints the dummy lines, then logs a heartbeat every HEARTBEAT_SECONDS for SLEEP_SECONDS total.
-CMD ["sh","-c","\
-  echo '=== Dummy data start ==='; \
-  echo 'Name: Alice'; \
-  echo 'Age: 30'; \
-  echo 'Location: Wonderland'; \
-  echo 'Favorite Color: Blue'; \
-  echo '=== Dummy data end ==='; \
-  S=${SLEEP_SECONDS:-300}; H=${HEARTBEAT_SECONDS:-5}; i=0; \
-  while [ $i -lt $S ]; do \
-    echo \"$(date +'%Y-%m-%dT%H:%M:%S%z') still running… t=${i}s\"; \
-    sleep $H; i=$((i+H)); \
-  done \
-"]
+# Defaults: hold for 10 minutes, log every 10s (change as needed)
+ENV SLEEP_SECONDS=600 HEARTBEAT_SECONDS=10 KEEPALIVE=1
+
+# Create an entrypoint wrapper (no extra files needed)
+RUN cat <<'SH' > /entrypoint.sh && chmod +x /entrypoint.sh
+#!/bin/sh
+set -e
+trap 'echo "[keepalive] termination signal"; exit 143' TERM INT
+
+# 1) Run the command/args provided by Kubernetes/Argo (your build step)
+if [ "$#" -gt 0 ]; then
+  echo "[runner] executing: $*"
+  "$@"
+  code=$?
+else
+  # Fallback if nothing was passed (keeps current behavior)
+  echo "=== Dummy data start ==="
+  echo "Name: Alice"
+  echo "Age: 30"
+  echo "Location: Wonderland"
+  echo "Favorite Color: Blue"
+  echo "=== Dummy data end ==="
+  code=0
+fi
+
+# 2) Post-run keepalive with heartbeat logs
+if [ "${KEEPALIVE:-1}" = "1" ]; then
+  S=${SLEEP_SECONDS:-600}
+  H=${HEARTBEAT_SECONDS:-10}
+  i=0
+  echo "[keepalive] holding pod for ${S}s (heartbeat ${H}s)"
+  while [ $i -lt $S ]; do
+    echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ') still running… t=${i}s"
+    sleep "$H" || true
+    i=$((i + H))
+  done
+fi
+
+exit "$code"
+SH
+
+ENTRYPOINT ["/entrypoint.sh"]
+# (Optional) If NOTHING is passed by Argo, this CMD triggers the fallback above.
+CMD []
