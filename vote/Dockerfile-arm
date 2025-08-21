@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1.6
+ARG TARGETPLATFORM
+FROM --platform=$TARGETPLATFORM python:3.11-slim AS base
+
+# Add curl for healthcheck
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/local/app
+
+# Install deps
+COPY vote/vote/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ---- Dev stage
+FROM base AS dev
+RUN pip install watchdog
+ENV FLASK_ENV=development
+# (Optional) copy source for dev, or mount it with -v at run
+# COPY vote/vote .
+CMD ["python", "app.py"]
+
+# ---- Final stage
+FROM base AS final
+
+# Copy app
+COPY vote/vote .
+# If you really need the .env file inside the image:
+# COPY vote/vote/.env .
+
+EXPOSE 80
+
+# ⚠️ Avoid shell substitution in Dockerfile; set defaults via ARG -> ENV
+ARG REDIS_HOST=localhost
+ARG REDIS_PORT=6379
+ARG REDIS_DB=0
+ARG OPTION_A=OptionA
+ARG OPTION_B=OptionB
+
+ENV REDIS_HOST=$REDIS_HOST \
+    REDIS_PORT=$REDIS_PORT \
+    REDIS_DB=$REDIS_DB \
+    OPTION_A=$OPTION_A \
+    OPTION_B=$OPTION_B
+
+# Prefer passing envs at runtime:
+# docker run --env-file vote/vote/.env ...
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=10s \
+  CMD curl -fsS http://localhost/ || exit 1
+
+CMD ["gunicorn", "app:app", "-b", "0.0.0.0:80", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0"]
