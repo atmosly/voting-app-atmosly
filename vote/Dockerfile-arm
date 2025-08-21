@@ -1,43 +1,50 @@
-#4 DONE 4.7s
+# syntax=docker/dockerfile:1.6
 
+# ----- Base (ARM64 only) -----
+FROM --platform=linux/arm64 python:3.11-slim AS base
 
-Dockerfile-arm:3
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
+# Add curl for HEALTHCHECK
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
 
---------------------
+WORKDIR /usr/local/app
 
+# Dependencies first for better layer cache
+COPY vote/vote/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-1 | # syntax=docker/dockerfile:1.6
+# ----- Dev stage -----
+FROM --platform=linux/arm64 base AS dev
+RUN pip install --no-cache-dir watchdog
+ENV FLASK_ENV=development
+COPY vote/vote .
+CMD ["python", "app.py"]
 
+# ----- Final / Production -----
+FROM --platform=linux/arm64 base AS final
+COPY vote/vote .
 
-2 | ARG TARGETPLATFORM
+EXPOSE 80
 
+# Defaults; override at build/run time as needed
+ARG REDIS_HOST=redis
+ARG REDIS_PORT=6379
+ARG REDIS_DB=0
+ARG OPTION_A=OptionA
+ARG OPTION_B=OptionB
 
-3 | >>> FROM --platform=$TARGETPLATFORM python:3.11-slim AS base
+ENV REDIS_HOST=${REDIS_HOST} \
+    REDIS_PORT=${REDIS_PORT} \
+    REDIS_DB=${REDIS_DB} \
+    OPTION_A=${OPTION_A} \
+    OPTION_B=${OPTION_B}
 
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=10s \
+  CMD curl -fsS http://localhost:80/ || exit 1
 
-4 |
-
-
-5 | # Add curl for healthcheck
-
-
---------------------
-
-
-ERROR: failed to solve: failed to parse platform : "" is an invalid component of "": platform specifier component must match "^[A-Za-z0-9_-]+$": invalid argument
-
-
-Failed step build
-
-
-Duration for build: 0m 18s
-
-
-Ends at: 2025-08-21 07:07:38
-
-
-time="2025-08-21T07:07:39.085Z" level=info msg="sub-process exited" argo=true error="<nil>"
-
-
-Error: exit status 1
+CMD ["gunicorn", "app:app", "-b", "0.0.0.0:80", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0"]
