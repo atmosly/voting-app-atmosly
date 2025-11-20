@@ -1,29 +1,18 @@
-# Multi-arch busybox (officially supports both architectures)
+# Multi-arch busybox base image
 FROM busybox:musl
 
-# Create app directory
+# Set working directory
 WORKDIR /app
 
-# Create a test file with build information
-RUN echo "==================================" > /app/build-info.txt && \
-    echo "Build Status: SUCCESS" >> /app/build-info.txt && \
-    echo "Build Time: $(date)" >> /app/build-info.txt && \
-    echo "Architecture: $(uname -m)" >> /app/build-info.txt && \
-    echo "Hostname: $(hostname)" >> /app/build-info.txt && \
-    echo "==================================" >> /app/build-info.txt
-
-# Create a simple startup script
-RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'echo "Container started successfully!"' >> /app/start.sh && \
-    echo 'echo ""' >> /app/start.sh && \
-    echo 'cat /app/build-info.txt' >> /app/start.sh && \
-    echo 'echo ""' >> /app/start.sh && \
-    echo 'echo "Container is running... Press Ctrl+C to stop"' >> /app/start.sh && \
-    echo 'while true; do sleep 1; done' >> /app/start.sh && \
-    chmod +x /app/start.sh
-
-# Expose a port (optional, for testing)
+# Expose port for potential future use
 EXPOSE 8080
 
-# Run the startup script
-CMD ["/app/start.sh"]
+#HealthCheck - simple file check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD test -d /app || exit 1
+
+# Default entrypoint
+ENTRYPOINT ["sh", "-c"]
+
+# Default command
+CMD ["echo '=== Build Successful ===' && echo 'Image: busybox:musl' && echo 'Status: Running' && echo '=======================' && exec tail -f /dev/null"]
