@@ -1,37 +1,39 @@
 # syntax=docker/dockerfile:1.6
 
-# ----- Base (ARM64 only) -----
-FROM --platform=linux/arm64 python:3.11-slim AS base
+FROM python:3.11-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    APP_HOME=/usr/local/app
 
-# Add curl for HEALTHCHECK
+WORKDIR ${APP_HOME}
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /usr/local/app
-
-# Dependencies first for better layer cache
 COPY vote/vote/requirements.txt .
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ----- Dev stage -----
-FROM --platform=linux/arm64 base AS dev
+FROM base AS dev
+
 RUN pip install --no-cache-dir watchdog
+
 ENV FLASK_ENV=development
+
 COPY vote/vote .
+
 CMD ["python", "app.py"]
 
-# ----- Final / Production -----
-FROM --platform=linux/arm64 base AS final
+FROM base AS final
+
 COPY vote/vote .
 
 EXPOSE 80
 
-# Defaults; override at build/run time as needed
 ARG REDIS_HOST=redis
 ARG REDIS_PORT=6379
 ARG REDIS_DB=0
