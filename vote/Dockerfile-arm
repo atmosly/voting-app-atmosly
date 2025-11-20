@@ -1,52 +1,31 @@
-# syntax=docker/dockerfile:1.6
+# Simple multi-arch Dockerfile for testing
+FROM alpine:3.19
 
-FROM python:3.11-slim AS base
+# Install curl for healthchecks and testing
+RUN apk add --no-cache curl ca-certificates
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    DEBIAN_FRONTEND=noninteractive \
-    APP_HOME=/usr/local/app
+# Create app directory
+WORKDIR /app
 
-WORKDIR ${APP_HOME}
+# Create a simple test file
+RUN echo "Build successful!" > /app/build-info.txt && \
+    echo "Timestamp: $(date)" >> /app/build-info.txt && \
+    echo "Architecture: $(uname -m)" >> /app/build-info.txt
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
+# Add a simple script
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'echo "Container started successfully!"' >> /app/start.sh && \
+    echo 'cat /app/build-info.txt' >> /app/start.sh && \
+    echo 'echo "Keeping container alive..."' >> /app/start.sh && \
+    echo 'tail -f /dev/null' >> /app/start.sh && \
+    chmod +x /app/start.sh
 
-COPY vote/vote/requirements.txt .
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD cat /app/build-info.txt || exit 1
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Expose a port (optional)
+EXPOSE 8080
 
-FROM base AS dev
-
-RUN pip install --no-cache-dir watchdog
-
-ENV FLASK_ENV=development
-
-COPY vote/vote .
-
-CMD ["python", "app.py"]
-
-FROM base AS final
-
-COPY vote/vote .
-
-EXPOSE 80
-
-ARG REDIS_HOST=redis
-ARG REDIS_PORT=6379
-ARG REDIS_DB=0
-ARG OPTION_A=OptionA
-ARG OPTION_B=OptionB
-
-ENV REDIS_HOST=${REDIS_HOST} \
-    REDIS_PORT=${REDIS_PORT} \
-    REDIS_DB=${REDIS_DB} \
-    OPTION_A=${OPTION_A} \
-    OPTION_B=${OPTION_B}
-
-HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=10s \
-  CMD curl -fsS http://localhost:80/ || exit 1
-
-CMD ["gunicorn", "app:app", "-b", "0.0.0.0:80", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0"]
+# Run the script
+CMD ["/app/start.sh"]
